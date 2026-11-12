@@ -383,17 +383,6 @@ export type AuditFilters = {
   to?: string;
 };
 
-function toAuditEntry(r: Row): AuditEntry {
-  return {
-    id: r["id"] as string,
-    adminEmail: (r["admin_email"] as string | null) ?? null,
-    action: r["action"] as string,
-    targetUserId: (r["target_user_id"] as string | null) ?? null,
-    targetLabel: (r["target_label"] as string | null) ?? null,
-    notes: (r["notes"] as string | null) ?? null,
-    createdAt: r["created_at"] as string,
-  };
-}
 
 /** Newest admin actions first, optionally narrowed by admin, action or date range. */
 export async function fetchAuditLog(
