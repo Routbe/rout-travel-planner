@@ -92,6 +92,6 @@ describe("member profile write allowlist", () => {
     const result = await authorizeQuery(update({ verified: true, display_name: "X" }), memberId);
     expect(result.ok).toBe(true);
     expect(result.ok && result.descriptor.values).toEqual({ display_name: "X" });
-    expect(query).toHaveBeenCalledWith(expect.stringContaining("public.user_roles"), [memberId]);
+    expect(query).toHaveBeenCalledWith(expect.stringContaining("public.rout_has_role"), [memberId]);
   });
 });

@@ -565,52 +565,19 @@ export async function fetchAuditPage(
   page = 1,
   perPage = 20,
 ): Promise<Page<AuditRow>> {
-  const { dbAdmin } = await import("@/lib/db/admin.server");
   const safePage = Math.max(1, page);
   const safePerPage = Math.min(100, Math.max(10, perPage));
-  const from = (safePage - 1) * safePerPage;
-
-  let q = dbAdmin
-    .from("admin_audit_log")
-    .select("id, admin_email, action, target_user_id, target_label, notes, created_at", {
-      count: "exact",
-    })
-    .order("created_at", { ascending: false });
-
-  if (filters.adminEmail) q = q.ilike("admin_email", `%${filters.adminEmail}%`);
-  if (filters.search) {
-    // Escape PostgREST's or() separators so a comma in the term cannot inject filters.
-    const term = filters.search.replace(/[,()]/g, " ").trim();
-    if (term) {
-      q = q.or(
-        [
-          `action.ilike.%${term}%`,
-          `admin_email.ilike.%${term}%`,
-          `target_label.ilike.%${term}%`,
-          `notes.ilike.%${term}%`,
-        ].join(","),
-      );
-    }
-  }
-  if (filters.action) q = q.eq("action", filters.action);
-  if (filters.from) q = q.gte("created_at", new Date(filters.from).toISOString());
-  if (filters.to) {
-    const to = new Date(filters.to);
-    to.setHours(23, 59, 59, 999);
-    q = q.lte("created_at", to.toISOString());
-  }
-
-  const { data, count } = await q.range(from, from + safePerPage - 1);
+  let to: string | null = null;
+  if (filters.to) { const d = new Date(filters.to); d.setHours(23, 59, 59, 999); to = d.toISOString(); }
+  const { searchAuditLog } = await import("./audit-search.server");
+  const data = await searchAuditLog({
+    adminEmail: filters.adminEmail, action: filters.action, search: filters.search,
+    from: filters.from ? new Date(filters.from).toISOString() : null, to,
+    offset: (safePage - 1) * safePerPage, limit: safePerPage,
+  });
+  const count = data.total ?? 0;
   return {
-    rows: (data ?? []).map((r) => ({
-      id: r.id,
-      adminEmail: r.admin_email,
-      action: r.action,
-      targetUserId: r.target_user_id,
-      targetLabel: r.target_label,
-      notes: r.notes,
-      createdAt: r.created_at,
-    })),
+    rows: [...data],
     total: count ?? 0,
     page: safePage,
     perPage: safePerPage,
@@ -619,13 +586,8 @@ export async function fetchAuditPage(
 
 /** Distinct action names, for the audit filter dropdown. */
 export async function listAuditActions(): Promise<string[]> {
-  const { dbAdmin } = await import("@/lib/db/admin.server");
-  const { data } = await dbAdmin
-    .from("admin_audit_log")
-    .select("action")
-    .order("created_at", { ascending: false })
-    .limit(1000);
-  return [...new Set((data ?? []).map((r) => r.action))].sort();
+  const { auditActions } = await import("./audit-search.server");
+  return auditActions();
 }
 
 export type AliasRow = {
@@ -1368,39 +1330,17 @@ export type VipAuditEntry = {
 
 /** Audit entries scoped to VIP/handle actions, filterable by handle, admin and date range. */
 export async function fetchVipAuditLog(filters: VipAuditFilters = {}): Promise<VipAuditEntry[]> {
-  const { dbAdmin } = await import("@/lib/db/admin.server");
-  let q = dbAdmin
-    .from("admin_audit_log")
-    .select("id, admin_email, action, target_user_id, target_label, notes, created_at")
-    .order("created_at", { ascending: false })
-    .limit(Math.min(filters.limit ?? 200, 500));
-
-  q =
-    filters.action && (VIP_AUDIT_ACTIONS as readonly string[]).includes(filters.action)
-      ? q.eq("action", filters.action)
-      : q.in("action", [...VIP_AUDIT_ACTIONS]);
-
-  if (filters.adminEmail) q = q.ilike("admin_email", `%${filters.adminEmail}%`);
-  if (filters.from) q = q.gte("created_at", new Date(filters.from).toISOString());
-  if (filters.to) {
-    const to = new Date(filters.to);
-    to.setHours(23, 59, 59, 999);
-    q = q.lte("created_at", to.toISOString());
-  }
-
-  const handle = safeOrTerm(filters.handle?.trim().replace(/^@/, "").toLowerCase() ?? "");
-  if (handle) q = q.or(`target_label.ilike.%${handle}%,notes.ilike.%${handle}%`);
-
-  const { data } = await q;
-  return (data ?? []).map((r) => ({
-    id: r.id,
-    adminEmail: r.admin_email,
-    action: r.action,
-    targetUserId: r.target_user_id,
-    targetLabel: r.target_label,
-    notes: r.notes,
-    createdAt: r.created_at,
-  }));
+  const actions = filters.action && (VIP_AUDIT_ACTIONS as readonly string[]).includes(filters.action)
+    ? [filters.action] : [...VIP_AUDIT_ACTIONS];
+  let to: string | null = null;
+  if (filters.to) { const d = new Date(filters.to); d.setHours(23, 59, 59, 999); to = d.toISOString(); }
+  const handle = filters.handle?.trim().replace(/^@/, "").toLowerCase() || null;
+  const { searchAuditLog } = await import("./audit-search.server");
+  return [...await searchAuditLog({
+    adminEmail: filters.adminEmail, actions, search: handle,
+    from: filters.from ? new Date(filters.from).toISOString() : null, to,
+    limit: Math.min(filters.limit ?? 200, 500),
+  })];
 }
 
 /* ------------------------------------------------------------------ *

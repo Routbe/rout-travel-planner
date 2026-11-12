@@ -50,64 +50,23 @@ export async function fetchAuditCursorPage(opts: {
   perPage: number;
 }> {
   assertServiceRole();
-  const { dbAdmin } = await import("@/lib/db/admin.server");
-
   const filters = opts.filters ?? {};
   const perPage = Math.min(100, Math.max(10, opts.perPage ?? 20));
-
-  let q = dbAdmin
-    .from("admin_audit_log")
-    .select("id, admin_email, action, target_user_id, target_label, notes, created_at")
-    .order("created_at", { ascending: false })
-    .order("id", { ascending: false })
-    .limit(perPage + 1);
-
-  if (filters.adminEmail) q = q.ilike("admin_email", `%${filters.adminEmail}%`);
-  if (filters.search) {
-    const term = filters.search.replace(/[,()]/g, " ").trim();
-    if (term) {
-      q = q.or(
-        [
-          `action.ilike.%${term}%`,
-          `admin_email.ilike.%${term}%`,
-          `target_label.ilike.%${term}%`,
-          `notes.ilike.%${term}%`,
-        ].join(","),
-      );
-    }
-  }
-  if (filters.action) q = q.eq("action", filters.action);
-  if (filters.from) q = q.gte("created_at", new Date(filters.from).toISOString());
-  if (filters.to) {
-    const to = new Date(filters.to);
-    to.setHours(23, 59, 59, 999);
-    q = q.lte("created_at", to.toISOString());
-  }
-
+  let to: string | null = null;
+  if (filters.to) { const d = new Date(filters.to); d.setHours(23, 59, 59, 999); to = d.toISOString(); }
   const anchor = opts.cursor ? decodeCursor(opts.cursor) : null;
-  if (anchor) {
-    // Strictly "older than the anchor", with id as a deterministic tie-break.
-    q = q.or(
-      `created_at.lt.${anchor.createdAt},and(created_at.eq.${anchor.createdAt},id.lt.${anchor.id})`,
-    );
-  }
-
-  const { data, error } = await q;
-  if (error) throw new Error(error.message);
+  const { searchAuditLog } = await import("./audit-search.server");
+  const data = await searchAuditLog({
+    adminEmail: filters.adminEmail, action: filters.action, search: filters.search,
+    from: filters.from ? new Date(filters.from).toISOString() : null, to,
+    cursorAt: anchor?.createdAt ?? null, cursorId: anchor?.id ?? null, limit: perPage + 1,
+  });
 
   const all = data ?? [];
   const hasMore = all.length > perPage;
   const page = hasMore ? all.slice(0, perPage) : all;
 
-  const rows: AuditCursorRow[] = page.map((r) => ({
-    id: r.id,
-    adminEmail: r.admin_email,
-    action: r.action,
-    targetUserId: r.target_user_id,
-    targetLabel: r.target_label,
-    notes: r.notes,
-    createdAt: r.created_at,
-  }));
+  const rows: AuditCursorRow[] = page;
 
   const last = rows[rows.length - 1];
   return {

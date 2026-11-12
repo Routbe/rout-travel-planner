@@ -119,7 +119,7 @@ export type PolicyDecision =
 export async function isAdmin(userId: string | null): Promise<boolean> {
   if (!userId) return false;
   const rows = (await sql.query(
-    `select 1 from public.user_roles where user_id = $1 and role = 'admin' limit 1`,
+    `select 1 where public.rout_has_role($1::uuid, 'admin')`,
     [userId],
   )) as unknown[];
   return rows.length > 0;

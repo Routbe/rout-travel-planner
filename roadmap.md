@@ -142,6 +142,11 @@
 - [ ] Retire the 3-of-5 recovery vault screens and code
 - [x] 0205/0206/0207/0213 recorded live; 0204 archived to db-archive/ and removed from the model
 - [x] 0223/0225 live: free `rout_server` access removed from 5 of the 23 tables (step-up tables owner-only, user_sessions/analytics_events/profile_ingest_tokens closed)
+- [x] 0226 live: security_codes, phone_otp_codes, auth_tokens only via database functions
+- [x] 0227 live: user_roles, admin_permissions, admin_audit_log, admin_bootstrap_tokens only via database functions (+ audit search injection fix, admin gift mail only to members)
+- [ ] Batch 3 ROUT ID: oauth_auth_codes, oauth_signing_keys, oauth_consents, oauth_client_test_users, oauth_client_verification_requests, oauth_debug_events
+- [ ] Batch 4 payments: psp_credentials, gift_cards, promo_codes, promo_code_events, pricing_settings, verification_payments
+- [ ] Remaining rout_server tables (login_codes, fediverse_email_otp, telegram_verify_sessions and ~30 more)
 - [ ] 0223 next phases (owner approved 12-11, continue without asking when live tests pass):
   - [ ] Sign-in & 2FA codes: security_codes, phone_otp_codes, auth_tokens -> database functions only
   - [ ] ROUT ID / OAuth: oauth_auth_codes, oauth_consents, api_keys

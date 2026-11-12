@@ -8,7 +8,8 @@ vi.mock("@/lib/neon", () => ({
     const q = strings.join("?");
     if (/twoFactorEnabled/.test(q)) return [{ on: state.twoFactor }];
     if (/from public\.users\s+where auth_user_id/.test(q)) return [{ id: "member-1" }];
-    if (/user_roles|admin_permissions/.test(q)) return state.admin ? [{ "?column?": 1 }] : [];
+    // Role checks run through the db/0227 database functions.
+    if (/rout_has_role|rout_is_admin_member/.test(q)) return [{ ok: state.admin, full: state.admin, member: state.admin }];
     return [];
   }),
 }));

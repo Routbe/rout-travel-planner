@@ -64,9 +64,8 @@ export async function sendSecondFactorSms(authUserId: string, code: string): Pro
 export async function authUserIsAdmin(authUserId: string): Promise<boolean> {
   const memberId = await memberIdForAuthUser(authUserId);
   if (!memberId) return false;
-  const rows = (await sql`select 1 from public.user_roles where user_id = ${memberId} and role::text = 'admin'
-    union all select 1 from public.admin_permissions where user_id = ${memberId} limit 1`) as Row[];
-  return rows.length > 0;
+  const rows = (await sql`select public.rout_is_admin_member(${memberId}::uuid) as ok`) as Row[];
+  return rows[0]?.["ok"] === true;
 }
 
 /** True when the member (public.users id) has 2FA switched on in Better Auth. */

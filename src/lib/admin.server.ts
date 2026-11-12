@@ -10,9 +10,9 @@ type Row = Record<string, unknown>;
  *  so callers can probe roles that may not exist in the `app_role` enum yet. */
 async function hasRole(userId: string, role: string): Promise<boolean> {
   const rows = (await sql`
-    select 1 from public.user_roles where user_id = ${userId} and role::text = ${role} limit 1
+    select public.rout_has_role(${userId}::uuid, ${role}) as ok
   `) as Row[];
-  return rows.length > 0;
+  return rows[0]?.["ok"] === true;
 }
 
 /** Throws unless the caller holds the admin role. */
@@ -350,14 +350,17 @@ export async function writeAudit(entry: {
   notes?: string | null;
 }) {
   try {
-    const rows =
-      (await sql`select email from public.users where id = ${entry.adminId} limit 1`) as Row[];
-    const adminEmail = (rows[0]?.["email"] as string | null) ?? null;
-    await sql`
-      insert into public.admin_audit_log (admin_id, admin_email, action, target_user_id, target_label, notes)
-      values (${entry.adminId}, ${adminEmail}, ${entry.action}, ${entry.targetUserId ?? null},
-              ${entry.targetLabel ?? null}, ${entry.notes ?? null})
+    // The database attributes the entry to the context user, checks that they
+    // really are an admin and derives the e-mail itself (db/0227).
+    const { currentDbUserId, withDbContext } = await import("@/lib/neon");
+    const write = () => sql`
+      select public.rout_audit_write(${entry.action}, ${entry.targetUserId ?? null}::uuid,
+        ${entry.targetLabel ?? null}, ${entry.notes ?? null}) as ok
     `;
+    const rows = (currentDbUserId() === entry.adminId
+      ? await write()
+      : await withDbContext({ userId: entry.adminId, workspaceId: null }, write)) as Row[];
+    if (rows[0]?.["ok"] !== true) console.error("audit log write refused", { action: entry.action });
   } catch (error) {
     console.error("audit log write failed", error);
   }
@@ -380,17 +383,6 @@ export type AuditFilters = {
   to?: string;
 };
 
-function toAuditEntry(r: Row): AuditEntry {
-  return {
-    id: r["id"] as string,
-    adminEmail: (r["admin_email"] as string | null) ?? null,
-    action: r["action"] as string,
-    targetUserId: (r["target_user_id"] as string | null) ?? null,
-    targetLabel: (r["target_label"] as string | null) ?? null,
-    notes: (r["notes"] as string | null) ?? null,
-    createdAt: r["created_at"] as string,
-  };
-}
 
 /** Newest admin actions first, optionally narrowed by admin, action or date range. */
 export async function fetchAuditLog(
@@ -400,18 +392,14 @@ export async function fetchAuditLog(
   const to = filters.to ? new Date(filters.to) : null;
   if (to) to.setHours(23, 59, 59, 999);
 
-  const rows = (await sql`
-    select id, admin_email, action, target_user_id, target_label, notes, created_at
-      from public.admin_audit_log
-     where (${filters.adminEmail ?? null}::text is null or admin_email ilike ${filters.adminEmail ? `%${filters.adminEmail}%` : null})
-       and (${filters.action ?? null}::text is null or action = ${filters.action ?? null})
-       and (${filters.from ?? null}::text is null or created_at >= ${filters.from ? new Date(filters.from).toISOString() : null}::timestamptz)
-       and (${to ? to.toISOString() : null}::text is null or created_at <= ${to ? to.toISOString() : null}::timestamptz)
-     order by created_at desc
-     limit ${limit}
-  `) as Row[];
+  const { searchAuditLog } = await import("./audit-search.server");
+  const rows = await searchAuditLog({
+    adminEmail: filters.adminEmail, action: filters.action,
+    from: filters.from ? new Date(filters.from).toISOString() : null,
+    to: to ? to.toISOString() : null, limit,
+  });
 
-  return rows.map(toAuditEntry);
+  return rows;
 }
 
 /** Moves a payment through the SEPA lifecycle without granting anything. */

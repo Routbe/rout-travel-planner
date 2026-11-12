@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const state = vi.hoisted(() => ({ admin: false, unavailable: false }));
 vi.mock("@/lib/neon", () => ({ sql: vi.fn(async () => {
   if (state.unavailable) throw new Error("database unavailable");
-  return state.admin ? [{ exists: 1 }] : [];
+  return [{ ok: state.admin }];
 }), hasDatabase: () => true }));
 vi.mock("@/lib/better-auth.server", () => ({
   createRoutAuth: vi.fn(() => ({ handler: async () => Response.json({ reachedAuth: true }) })),

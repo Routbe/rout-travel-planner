@@ -80,11 +80,13 @@ export const adminResendGift = createServerFn({ method: "POST" })
     const { sendAdminGift, storedGiftRecipient, giftMailAuditNote } = await import("./admin-gift-issue.server");
     const { resendTarget } = await import("./gift-issue-rules");
     // A gift with a stored recipient is only ever re-sent to that recipient.
-    const input = resendTarget(await storedGiftRecipient(data.code), { ...data.input, sendEmail: true,
+    const stored = await storedGiftRecipient(data.code);
+    const input = resendTarget(stored, { ...data.input, sendEmail: true,
       kind: promo.percentOff > 0 ? "percentage" : "fixed", amountCents: promo.amountOffCents,
       percentOff: promo.percentOff, maxDiscountCents: promo.maxDiscountCents,
       maxRedemptions: Number(row.max_redemptions ?? 1), expiresAt: typeof row.expires === "string" ? row.expires : null });
-    const result = await sendAdminGift(context.userId, data.code, input);
+    const result = await sendAdminGift(context.userId, data.code, input,
+      Boolean(stored?.recipientEmail) && input.recipientEmail === stored?.recipientEmail);
     await writeAudit({ adminId: context.userId, action: "gift_card_resend", targetLabel: data.code,
       targetUserId: input.recipientUserId ?? null, notes: giftMailAuditNote(input, result.emailed) }).catch(() => undefined);
     return result;

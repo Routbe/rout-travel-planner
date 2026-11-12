@@ -410,16 +410,10 @@ async function activate(
     })
     .eq("id", payment.user_id);
 
-  await dbAdmin.from("admin_audit_log").insert({
-    admin_id: payment.user_id,
-    admin_email: "system@rout.be",
-    action: "AUTO_PAYMENT_VERIFIED",
-    target_user_id: payment.user_id,
-    target_label: reference,
-    notes: `Reference: ${reference} — automatic bank transfer match (level 1, ${
+  await writeSystemAudit("AUTO_PAYMENT_VERIFIED", payment.user_id, reference,
+    `Reference: ${reference} — automatic bank transfer match (level 1, ${
       amountCents === null ? "amount unknown" : `${(amountCents / 100).toFixed(2)} EUR`
-    }).`,
-  });
+    }).`);
 
   await dbAdmin.from("security_events").insert({
     user_id: payment.user_id,
@@ -492,19 +486,18 @@ async function logReview(
   reason: string,
 ) {
   try {
-    const { dbAdmin } = await import("@/lib/db/admin.server");
-    await dbAdmin.from("admin_audit_log").insert({
-      admin_id: userId ?? "00000000-0000-0000-0000-000000000000",
-      admin_email: "system@rout.be",
-      action: "PAYMENT_REVIEW_REQUIRED",
-      target_user_id: userId,
-      target_label: reference ?? "unknown",
-      notes: `Review required (${reason}) — received ${
+    await writeSystemAudit("PAYMENT_REVIEW_REQUIRED", userId, reference ?? "unknown",
+      `Review required (${reason}) — received ${
         amountCents === null ? "unknown amount" : `${(amountCents / 100).toFixed(2)} EUR`
-      }${expected === null ? "" : `, expected ${(expected / 100).toFixed(2)} EUR`}.`,
-    });
+      }${expected === null ? "" : `, expected ${(expected / 100).toFixed(2)} EUR`}.`);
     console.warn("[sepa-match] review required", { reason, reference, amountCents, expected });
   } catch (error) {
     console.error("[sepa-match] review log failed", error);
   }
+}
+
+/** Automatic (no admin) audit entries; the database allows only fixed action names (db/0227). */
+async function writeSystemAudit(action: string, target: string | null, label: string, notes: string) {
+  const { sql } = await import("@/lib/neon");
+  await sql`select public.rout_audit_write_system(${action}, ${target}::uuid, ${label}, ${notes})`;
 }

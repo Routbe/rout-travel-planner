@@ -8,14 +8,11 @@ export const amIAdmin = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { sql } = await import("./neon");
     const rows = (await sql`
-      select 1 from public.user_roles where user_id = ${context.userId} and role::text = 'admin' limit 1
-    `) as unknown[];
-    if (rows.length > 0) return { isAdmin: true, fullAdmin: true };
+      select public.rout_has_role(${context.userId}::uuid, 'admin') as full,
+             public.rout_is_admin_member(${context.userId}::uuid) as member
+    `) as Record<string, unknown>[];
     // Co-admins with delegated permissions may enter the portal; each action still checks its own permission.
-    const perms = (await sql`
-      select 1 from public.admin_permissions where user_id = ${context.userId} limit 1
-    `.catch(() => [])) as unknown[];
-    return { isAdmin: perms.length > 0, fullAdmin: false };
+    return { isAdmin: rows[0]?.["member"] === true, fullAdmin: rows[0]?.["full"] === true };
   });
 
 /** Payments awaiting a manual SEPA/card match. */
