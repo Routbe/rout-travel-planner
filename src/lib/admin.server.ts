@@ -410,7 +410,7 @@ export async function fetchAuditLog(
     to: to ? to.toISOString() : null, limit,
   });
 
-  return rows.map(toAuditEntry);
+  return rows;
 }
 
 /** Moves a payment through the SEPA lifecycle without granting anything. */
