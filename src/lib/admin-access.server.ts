@@ -44,9 +44,9 @@ export function isAdminPermission(value: string): value is AdminPermission {
 
 async function isFullAdmin(userId: string): Promise<boolean> {
   const rows = (await sql`
-    select 1 from public.user_roles where user_id = ${userId} and role::text = 'admin' limit 1
+    select public.rout_has_role(${userId}::uuid, 'admin') as ok
   `) as Row[];
-  return rows.length > 0;
+  return rows[0]?.["ok"] === true;
 }
 
 /** Full admins implicitly hold every permission. */
@@ -57,10 +57,9 @@ export async function hasAdminPermission(
   if (await isFullAdmin(userId)) return true;
   try {
     const rows = (await sql`
-      select 1 from public.admin_permissions
-       where user_id = ${userId} and permission = ${permission} limit 1
+      select ${permission}::text = any (public.rout_admin_permissions_of(${userId}::uuid)) as ok
     `) as Row[];
-    return rows.length > 0;
+    return rows[0]?.["ok"] === true;
   } catch {
     return false;
   }
@@ -86,7 +85,7 @@ export async function myAdminAccess(userId: string) {
   if (fullAdmin) return { fullAdmin, twoFactorEnabled, permissions: [...ADMIN_PERMISSIONS] as AdminPermission[] };
   try {
     const rows = (await sql`
-      select permission from public.admin_permissions where user_id = ${userId}
+      select unnest(public.rout_admin_permissions_of(${userId}::uuid)) as permission
     `) as Row[];
     return {
       fullAdmin,
@@ -110,21 +109,10 @@ export interface AdminGrantRow {
 
 /** Everyone who holds the admin role and/or one or more delegated permissions. */
 export async function listAdminGrants(): Promise<AdminGrantRow[]> {
+  // Checked in the database: the caller needs manage_admins (db/0227).
   const rows = (await sql`
-    select u.id,
-           u.email,
-           p.username,
-           coalesce(array_agg(ap.permission) filter (where ap.permission is not null), '{}') as perms,
-           exists (select 1 from public.user_roles r
-                    where r.user_id = u.id and r.role::text = 'admin') as full_admin
-      from public.users u
-      left join public.profiles p on p.id = u.id
-      left join public.admin_permissions ap on ap.user_id = u.id
-     where exists (select 1 from public.admin_permissions x where x.user_id = u.id)
-        or exists (select 1 from public.user_roles r where r.user_id = u.id and r.role::text = 'admin')
-     group by u.id, u.email, p.username
-     order by u.email nulls last
-     limit 100
+    select user_id as id, email, username, permissions as perms, full_admin
+      from public.rout_admin_grants_list()
   `) as Row[];
 
   return rows.map((r) => ({
@@ -143,24 +131,12 @@ export async function setAdminPermission(opts: {
   permission: AdminPermission;
   granted: boolean;
 }) {
-  if (opts.granted) {
-    await sql`
-      insert into public.admin_permissions (user_id, permission, granted_by)
-      values (${opts.userId}, ${opts.permission}, ${opts.adminId})
-      on conflict (user_id, permission) do nothing
-    `;
-  } else {
-    await sql`
-      delete from public.admin_permissions
-       where user_id = ${opts.userId} and permission = ${opts.permission}
-    `;
-  }
-  await writeAudit({
-    adminId: opts.adminId,
-    action: opts.granted ? "admin_permission_grant" : "admin_permission_revoke",
-    targetUserId: opts.userId,
-    targetLabel: opts.permission,
-  });
+  // The database checks the caller (context) holds manage_admins, validates the
+  // permission name and writes the audit entry in the same transaction.
+  const rows = (await sql`
+    select public.rout_admin_permission_set(${opts.userId}::uuid, ${opts.permission}, ${opts.granted}) as ok
+  `) as Row[];
+  if (rows[0]?.["ok"] !== true) throw new Error("admin_permission_rejected");
   return { ok: true as const };
 }
 

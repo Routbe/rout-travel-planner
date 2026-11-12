@@ -881,7 +881,7 @@ export async function isVerifiedDeveloper(userId: string): Promise<boolean> {
   );
   const p = (profile?.["p"] ?? {}) as Record<string, unknown>;
   const admin = await safe(() =>
-    sql`select 1 from public.user_roles where user_id = ${userId} and role::text = 'admin' limit 1`,
+    sql`select 1 where public.rout_has_role(${userId}::uuid, 'admin')`,
   );
   const handle = await safe(() =>
     sql`select 1 from public.approved_handles where user_id = ${userId} and status = 'claimed' limit 1`,

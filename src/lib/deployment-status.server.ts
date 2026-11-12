@@ -99,7 +99,7 @@ export async function getDeploymentStatus(): Promise<DeploymentStatus> {
       const { withServerTimeout } = await import("./server-auth.server");
       const { sql } = await import("./neon");
       await withServerTimeout(
-        sql.query(`select count(*)::int as count from public.admin_audit_log`, []),
+        sql.query(`select 1 as ok`, []),
         "deployment-status.databaseProbe",
       );
       serviceRoleWorks = true;

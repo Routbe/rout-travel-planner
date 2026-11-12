@@ -84,11 +84,7 @@ export const getMyAccount = createServerFn({ method: "GET" })
         values (${context.userId}, ${email ? email.toLowerCase() : null})
         on conflict (id) do nothing
       `;
-      await sql`
-        insert into public.user_roles (user_id, role)
-        values (${context.userId}, 'user')
-        on conflict (user_id, role) do nothing
-      `;
+      await sql`select public.rout_user_role_ensure_member()`;
       account = await loadAccount(context.userId);
     }
 

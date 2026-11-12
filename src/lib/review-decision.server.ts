@@ -45,7 +45,7 @@ export async function previewReview(token: string) {
 }
 
 async function reviewerId(): Promise<string> {
-  const rows = (await sql`select user_id from public.user_roles where role::text = 'admin' order by user_id limit 1`) as Row[];
+  const rows = (await sql`select public.rout_reviewer_admin_id() as user_id`) as Row[];
   return (rows[0]?.["user_id"] as string | undefined) ?? (null as unknown as string);
 }
 

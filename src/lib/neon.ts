@@ -22,6 +22,10 @@ const dbContext = new AsyncLocalStorage<DbContext>();
 export function withDbContext<T>(ctx: DbContext, fn: () => T): T {
   return dbContext.run(ctx, fn);
 }
+/** User id of the active request context, if any. */
+export function currentDbUserId(): string | null {
+  return dbContext.getStore()?.userId ?? null;
+}
 function activeContext(): Statement[] {
   const ctx = dbContext.getStore();
   return ctx ? contextStatements(ctx) : [];

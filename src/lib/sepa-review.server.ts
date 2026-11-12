@@ -150,14 +150,11 @@ export async function decideSepaReview(
   `;
 
   try {
-    await sql`
-      insert into public.admin_audit_log
-        (admin_id, admin_email, action, target_user_id, target_label, notes)
-      values (${adminId}, 'admin@rout.be',
-              ${decision === "approved" ? "SEPA_REVIEW_APPROVED" : "SEPA_REVIEW_REJECTED"},
-              ${review.user_id}, ${review.reference ?? "unknown"},
-              ${`Name-mismatch review ${decision}${notes ? ` — ${notes}` : ""}.`})
-    `;
+    const { writeAudit } = await import("./admin.server");
+    await writeAudit({ adminId,
+      action: decision === "approved" ? "SEPA_REVIEW_APPROVED" : "SEPA_REVIEW_REJECTED",
+      targetUserId: review.user_id ?? null, targetLabel: review.reference ?? "unknown",
+      notes: `Name-mismatch review ${decision}${notes ? ` — ${notes}` : ""}.` });
   } catch (error) {
     console.error("[sepa-review] audit log failed", error);
   }
